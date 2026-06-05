@@ -45,7 +45,14 @@ class LegacyCamCard extends HTMLElement {
         const overlay = this.querySelector("#overlay");
         const stream = this.querySelector("#stream");
 
-        stream.src = this.config.stream;
+        const cam =
+          this._hass.states[
+            this.config.camera_entity
+          ];
+
+        stream.src =
+          cam?.attributes?.stream_source ||
+          "";
         overlay.classList.remove("hidden");
       };
 
@@ -76,7 +83,10 @@ class LegacyCamCard extends HTMLElement {
     const img = this.querySelector("#preview");
     if (!img) return;
 
-    const cam = this._hass.states[this.config.entity];
+    const cam =
+      this._hass.states[
+        this.config.camera_entity
+      ];
     if (!cam) return;
 
     img.src = cam.attributes.entity_picture || this.config.snapshot;
@@ -96,7 +106,6 @@ class LegacyCamCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      entity: "",
       flash_entity: "",
       stream: "",
       rotation: 0
@@ -110,7 +119,18 @@ customElements.define("legacycam-card", LegacyCamCard);
 class LegacyCamCardEditor extends HTMLElement {
 
   setConfig(config) {
-    this.config = config;
+    this.config = {
+      camera_entity: "",
+      flash_entity: "",
+      stream: "",
+      snapshot: "",
+      rotation: 0,
+      ...config
+    };
+
+    if (this._hass && !this._rendered) {
+      this._render();
+    }
   }
 
   set hass(hass) {
@@ -119,11 +139,13 @@ class LegacyCamCardEditor extends HTMLElement {
   }
 
   _render() {
+    const cfg = this.config || {};
+
     this.innerHTML = `
       <div class="lc-editor">
 
         <label>Camera entity</label>
-        <select id="entity"></select>
+        <select id="camera"></select>
 
         <label>Flash entity</label>
         <select id="flash"></select>
@@ -147,11 +169,11 @@ class LegacyCamCardEditor extends HTMLElement {
 
     this._fillEntities();
 
-    this.querySelector("#entity").value = this.config.entity || "";
-    this.querySelector("#flash").value = this.config.flash_entity || "";
-    this.querySelector("#stream").value = this.config.stream || "";
-    this.querySelector("#snapshot").value = this.config.snapshot || "";
-    this.querySelector("#rotation").value = this.config.rotation || 0;
+    this.querySelector("#camera").value = cfg.camera_entity || "";
+    this.querySelector("#flash").value = cfg.flash_entity || "";
+    this.querySelector("#stream").value = cfg.stream || "";
+    this.querySelector("#snapshot").value = cfg.snapshot || "";
+    this.querySelector("#rotation").value = cfg.rotation || 0;
 
     this.querySelectorAll("input, select").forEach(el => {
       el.onchange = () => this._updateConfig();
@@ -163,7 +185,7 @@ class LegacyCamCardEditor extends HTMLElement {
   _fillEntities() {
     const entities = Object.keys(this._hass.states);
 
-    const camSelect = this.querySelector("#entity");
+    const camSelect = this.querySelector("#camera");
     const flashSelect = this.querySelector("#flash");
 
     entities.forEach(e => {
@@ -185,7 +207,7 @@ class LegacyCamCardEditor extends HTMLElement {
       detail: {
         config: {
           ...this.config,
-          entity: this.querySelector("#entity").value,
+          camera_entity: this.querySelector("#camera").value,
           flash_entity: this.querySelector("#flash").value,
           stream: this.querySelector("#stream").value,
           snapshot: this.querySelector("#snapshot").value,
@@ -205,4 +227,5 @@ window.customCards.push({
     type: "legacycam-card",
     name: "LegacyCam Card",
     description: "A custom legacy camera card for Home Assistant",
+    preview: true
 });
