@@ -204,5 +204,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
     type: "legacycam-card",
     name: "LegacyCam Card",
-    description: localize("card.description"),
+    description: "A custom legacy camera card for Home Assistant",
 });
