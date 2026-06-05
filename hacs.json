@@ -1,6 +1,11 @@
 {
   "name": "LegacyCam Card",
-  "content_in_root": true,
-  "render_readme": true,
-  "type": "lovelace"
+  "description": "A custom legacy camera card for Home Assistant",
+  "codeowners": ["@fabiswdevbeg"],
+  "config_flow": false,
+  "dependencies": [],
+  "documentation": "https://github.com/fabiswdevbeg/LegacyCam_HACS_Card",
+  "domain": "legacycam-card",
+  "issues": "https://github.com/fabiswdevbeg/LegacyCam_HACS_Card/issues",
+  "filename": "legacycam-card.js"
 }
