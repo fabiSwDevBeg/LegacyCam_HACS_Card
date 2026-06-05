@@ -199,3 +199,10 @@ class LegacyCamCardEditor extends HTMLElement {
 }
 
 customElements.define("legacycam-card-editor", LegacyCamCardEditor);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+    type: "legacycam-card",
+    name: "LegacyCam Card",
+    description: localize("card.description"),
+});
