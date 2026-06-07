@@ -1,113 +1,269 @@
 class LegacyCamCard extends HTMLElement {
 
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._rendered = false;
+    this._viewerOpen = false;
+  }
+
   setConfig(config) {
+    if (!config.camera_entity) {
+      throw new Error("camera_entity is required");
+    }
+
     this.config = {
+      flash_entity: "",
       rotation: 0,
       ...config
     };
+
+    if (this._rendered) {
+      this._update();
+    }
   }
 
   set hass(hass) {
     this._hass = hass;
 
-    if (!this.content) {
-      this.innerHTML = `
-        <ha-card>
-          <div class="lc-wrapper">
-
-            <img id="preview" class="lc-preview" />
-
-            <button class="lc-flash" id="flashBtn">⚡</button>
-
-          </div>
-
-          <div class="lc-overlay hidden" id="overlay">
-            <div class="lc-overlay-content">
-
-              <button class="lc-close" id="closeBtn">✕</button>
-
-              <img id="stream" class="lc-stream" />
-
-              <button class="lc-flash-overlay" id="flashBtn2">⚡</button>
-
-            </div>
-          </div>
-
-        </ha-card>
-      `;
-
-      this.content = true;
-
-      this._updatePreview();
-
-      // OPEN STREAM
-      this.querySelector("#preview").onclick = () => {
-        const overlay = this.querySelector("#overlay");
-        const stream = this.querySelector("#stream");
-
-        const cam =
-          this._hass.states[
-            this.config.camera_entity
-          ];
-
-        stream.src =
-          cam?.attributes?.stream_source ||
-          "";
-        overlay.classList.remove("hidden");
-      };
-
-      // CLOSE
-      this.querySelector("#closeBtn").onclick = () => {
-        this.querySelector("#overlay").classList.add("hidden");
-        this.querySelector("#stream").src = "";
-      };
-
-      // FLASH toggle
-      const toggleFlash = () => {
-        const entity = this.config.flash_entity;
-        const state = this._hass.states[entity]?.state;
-
-        this._hass.callService(
-          "switch",
-          state === "on" ? "turn_off" : "turn_on",
-          { entity_id: entity }
-        );
-      };
-
-      this.querySelector("#flashBtn").onclick = toggleFlash;
-      this.querySelector("#flashBtn2").onclick = toggleFlash;
+    if (!this._rendered) {
+      this._render();
     }
+
+    this._update();
   }
 
-  _updatePreview() {
-    const img = this.querySelector("#preview");
-    if (!img) return;
+  _render() {
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host {
+          display: block;
+        }
 
-    const cam =
-      this._hass.states[
-        this.config.camera_entity
-      ];
-    if (!cam) return;
+        ha-card {
+          overflow: hidden;
+          background: var(--ha-card-background, var(--card-background-color));
+          color: var(--primary-text-color);
+        }
 
-    img.src = cam.attributes.entity_picture || this.config.snapshot;
+        .frame {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 4 / 3;
+          background: var(--secondary-background-color);
+          overflow: hidden;
+          cursor: pointer;
+        }
 
-    const rot = this.config.rotation || 0;
-    img.style.transform = `rotate(${rot}deg)`;
+        .preview,
+        .stream {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          display: block;
+          transform-origin: center;
+          background: #000;
+        }
+
+        .flash {
+          position: absolute;
+          left: 12px;
+          bottom: 12px;
+          width: 44px;
+          height: 44px;
+          border: 0;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          color: var(--primary-text-color);
+          background: var(--ha-card-background, var(--card-background-color));
+          box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.28));
+          cursor: pointer;
+          opacity: 0.92;
+        }
+
+        .flash[disabled] {
+          opacity: 0.45;
+          cursor: default;
+        }
+
+        .flash.on {
+          color: var(--warning-color, #f9c74f);
+        }
+
+        .viewer {
+          position: fixed;
+          inset: 0;
+          z-index: 999;
+          display: none;
+          background: rgba(0, 0, 0, 0.92);
+        }
+
+        .viewer.open {
+          display: grid;
+          place-items: center;
+        }
+
+        .viewer-inner {
+          position: relative;
+          width: 100vw;
+          height: 100vh;
+        }
+
+        .close {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          width: 44px;
+          height: 44px;
+          border: 0;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          color: var(--primary-text-color);
+          background: var(--ha-card-background, var(--card-background-color));
+          cursor: pointer;
+          z-index: 1;
+        }
+      </style>
+
+      <ha-card>
+        <div class="frame" id="previewFrame">
+          <img class="preview" id="preview" alt="" />
+          <button class="flash" id="flash" type="button">
+            <ha-icon icon="mdi:flash"></ha-icon>
+          </button>
+        </div>
+      </ha-card>
+
+      <div class="viewer" id="viewer">
+        <div class="viewer-inner">
+          <button class="close" id="close" type="button">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </button>
+          <img class="stream" id="stream" alt="" />
+          <button class="flash" id="viewerFlash" type="button">
+            <ha-icon icon="mdi:flash"></ha-icon>
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.shadowRoot.getElementById("previewFrame").addEventListener("click", () => this._openViewer());
+    this.shadowRoot.getElementById("close").addEventListener("click", () => this._closeViewer());
+    this.shadowRoot.getElementById("flash").addEventListener("click", (event) => this._toggleFlash(event));
+    this.shadowRoot.getElementById("viewerFlash").addEventListener("click", (event) => this._toggleFlash(event));
+
+    this._rendered = true;
+  }
+
+  _update() {
+    if (!this._hass || !this.config) return;
+
+    const camera = this._cameraState();
+    const preview = this.shadowRoot.getElementById("preview");
+    const rotation = this._rotation();
+
+    if (preview && camera) {
+      const source = camera.attributes.entity_picture || this._cameraProxyUrl(false);
+      if (preview.dataset.source !== source) {
+        preview.src = source;
+        preview.dataset.source = source;
+      }
+      preview.style.transform = `rotate(${rotation}deg)`;
+    }
+
+    const stream = this.shadowRoot.getElementById("stream");
+    if (stream) {
+      stream.style.transform = `rotate(${rotation}deg)`;
+    }
+
+    this._updateFlashButton(this.shadowRoot.getElementById("flash"));
+    this._updateFlashButton(this.shadowRoot.getElementById("viewerFlash"));
+  }
+
+  _cameraState() {
+    return this._hass?.states?.[this.config.camera_entity];
+  }
+
+  _flashState() {
+    return this.config.flash_entity ? this._hass?.states?.[this.config.flash_entity] : null;
+  }
+
+  _rotation() {
+    const value = Number(this.config.rotation || 0);
+    return [0, 90, 180, 270].includes(value) ? value : 0;
+  }
+
+  _cameraProxyUrl(stream) {
+    const entityId = this.config.camera_entity;
+    const token = this._cameraState()?.attributes?.access_token;
+    const path = stream ? "camera_proxy_stream" : "camera_proxy";
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+
+    return `/api/${path}/${entityId}${query}`;
+  }
+
+  _openViewer() {
+    const viewer = this.shadowRoot.getElementById("viewer");
+    const stream = this.shadowRoot.getElementById("stream");
+
+    stream.src = this._cameraProxyUrl(true);
+    viewer.classList.add("open");
+    this._viewerOpen = true;
+  }
+
+  _closeViewer() {
+    const viewer = this.shadowRoot.getElementById("viewer");
+    const stream = this.shadowRoot.getElementById("stream");
+
+    viewer.classList.remove("open");
+    stream.removeAttribute("src");
+    this._viewerOpen = false;
+  }
+
+  _updateFlashButton(button) {
+    if (!button) return;
+
+    const flash = this._flashState();
+    const enabled = Boolean(flash);
+    const on = flash?.state === "on";
+
+    button.disabled = !enabled;
+    button.classList.toggle("on", on);
+  }
+
+  _toggleFlash(event) {
+    event.stopPropagation();
+
+    const entity = this.config.flash_entity;
+    const state = this._flashState()?.state;
+
+    if (!entity || !state) return;
+
+    this._hass.callService(
+      "switch",
+      state === "on" ? "turn_off" : "turn_on",
+      { entity_id: entity }
+    );
   }
 
   getCardSize() {
     return 3;
   }
 
-  // 👉 Lovelace editor
   static getConfigElement() {
     return document.createElement("legacycam-card-editor");
   }
 
-  static getStubConfig() {
+  static getStubConfig(hass) {
+    const camera = Object.keys(hass?.states || {}).find((entityId) => entityId.startsWith("camera."));
+    const flash = Object.keys(hass?.states || {}).find((entityId) => entityId.startsWith("switch."));
+
     return {
-      flash_entity: "",
-      stream: "",
+      type: "custom:legacycam-card",
+      camera_entity: camera || "",
+      flash_entity: flash || "",
       rotation: 0
     };
   }
@@ -118,102 +274,80 @@ customElements.define("legacycam-card", LegacyCamCard);
 
 class LegacyCamCardEditor extends HTMLElement {
 
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+  }
+
   setConfig(config) {
     this.config = {
       camera_entity: "",
       flash_entity: "",
-      stream: "",
-      snapshot: "",
       rotation: 0,
       ...config
     };
 
-    if (this._hass && !this._rendered) {
-      this._render();
-    }
+    this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._rendered) this._render();
+    this._render();
   }
 
   _render() {
-    const cfg = this.config || {};
+    if (!this._hass || !this.config) return;
 
-    this.innerHTML = `
-      <div class="lc-editor">
-
-        <label>Camera entity</label>
-        <select id="camera"></select>
-
-        <label>Flash entity</label>
-        <select id="flash"></select>
-
-        <label>Stream URL</label>
-        <input id="stream" type="text" placeholder="http://IP:8080/stream" />
-
-        <label>Snapshot URL</label>
-        <input id="snapshot" type="text" placeholder="http://IP:8080/snapshot.jpg" />
-
-        <label>Rotation</label>
-        <select id="rotation">
-          <option value="0">0°</option>
-          <option value="90">90°</option>
-          <option value="180">180°</option>
-          <option value="270">270°</option>
-        </select>
-
+    this.shadowRoot.innerHTML = `
+      <style>
+        .editor {
+          display: grid;
+          gap: 16px;
+        }
+      </style>
+      <div class="editor">
+        <ha-selector id="camera"></ha-selector>
+        <ha-selector id="flash"></ha-selector>
+        <ha-selector id="rotation"></ha-selector>
       </div>
     `;
 
-    this._fillEntities();
-
-    this.querySelector("#camera").value = cfg.camera_entity || "";
-    this.querySelector("#flash").value = cfg.flash_entity || "";
-    this.querySelector("#stream").value = cfg.stream || "";
-    this.querySelector("#snapshot").value = cfg.snapshot || "";
-    this.querySelector("#rotation").value = cfg.rotation || 0;
-
-    this.querySelectorAll("input, select").forEach(el => {
-      el.onchange = () => this._updateConfig();
-    });
-
-    this._rendered = true;
+    this._setupSelector("camera", "Camera entity", { entity: { domain: "camera" } }, this.config.camera_entity);
+    this._setupSelector("flash", "Flash entity", { entity: { domain: "switch" } }, this.config.flash_entity);
+    this._setupSelector("rotation", "Rotation", {
+      select: {
+        options: [
+          { value: "0", label: "0" },
+          { value: "90", label: "90" },
+          { value: "180", label: "180" },
+          { value: "270", label: "270" }
+        ],
+        mode: "dropdown"
+      }
+    }, String(this.config.rotation || 0));
   }
 
-  _fillEntities() {
-    const entities = Object.keys(this._hass.states);
+  _setupSelector(id, label, selector, value) {
+    const element = this.shadowRoot.getElementById(id);
 
-    const camSelect = this.querySelector("#camera");
-    const flashSelect = this.querySelector("#flash");
-
-    entities.forEach(e => {
-      const opt1 = document.createElement("option");
-      opt1.value = e;
-      opt1.textContent = e;
-
-      const opt2 = document.createElement("option");
-      opt2.value = e;
-      opt2.textContent = e;
-
-      camSelect.appendChild(opt1);
-      flashSelect.appendChild(opt2);
-    });
+    element.hass = this._hass;
+    element.label = label;
+    element.selector = selector;
+    element.value = value || "";
+    element.addEventListener("value-changed", (event) => this._valueChanged(id, event.detail.value));
   }
 
-  _updateConfig() {
+  _valueChanged(id, value) {
+    const config = {
+      ...this.config,
+      [id === "camera" ? "camera_entity" : id === "flash" ? "flash_entity" : "rotation"]:
+        id === "rotation" ? Number(value) : value
+    };
+
+    this.config = config;
+
     this.dispatchEvent(new CustomEvent("config-changed", {
-      detail: {
-        config: {
-          ...this.config,
-          camera_entity: this.querySelector("#camera").value,
-          flash_entity: this.querySelector("#flash").value,
-          stream: this.querySelector("#stream").value,
-          snapshot: this.querySelector("#snapshot").value,
-          rotation: parseInt(this.querySelector("#rotation").value)
-        }
-      },
+      detail: { config },
       bubbles: true,
       composed: true
     }));
@@ -224,8 +358,8 @@ customElements.define("legacycam-card-editor", LegacyCamCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-    type: "legacycam-card",
-    name: "LegacyCam Card",
-    description: "A custom legacy camera card for Home Assistant",
-    preview: true
+  type: "legacycam-card",
+  name: "LegacyCam Card",
+  description: "LegacyCam camera preview with flash control",
+  preview: true
 });

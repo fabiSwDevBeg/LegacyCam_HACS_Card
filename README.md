@@ -1,157 +1,64 @@
-# LegacyCam - Home Assistant HACS Integration
+# LegacyCam Lovelace Card
 
-LegacyCam is a custom Home Assistant integration designed for simple IP cameras exposing:
-- MJPEG stream
-- Snapshot endpoint
-- Flash control (on/off via HTTP)
-- Video clip recording with retention management
+LegacyCam Card is a HACS frontend card for the LegacyCam Home Assistant integration. It is configured with entities only; raw backend URLs stay behind Home Assistant so HTTPS, proxies, Nabu Casa, and remote access keep working.
 
----
+## Architecture Proposal
 
-## 📌 Features
+- `legacycam-card`: renders the camera preview, fullscreen stream, rotation transform, and flash button.
+- `legacycam-card-editor`: uses Home Assistant selectors for camera, switch, and rotation fields.
+- Home Assistant camera proxy endpoints are used for preview and fullscreen stream.
+- Flash control goes through the configured switch entity.
 
-- 📹 MJPEG live stream support
-- 📸 Snapshot support
-- 💡 Flash ON/OFF switch via HTTP endpoints
-- 🎥 FFmpeg-based clip recording
-- 🧠 Automatic retention management (based on hours + clip duration)
-- ⚙️ Fully configurable via Home Assistant UI (Config Flow)
+## Folder Structure Proposal
 
----
-
-## 📷 Supported Camera Endpoints
-
-Your device must expose:
-
-```
-http://DEVICE_IP:8080/stream
-http://DEVICE_IP:8080/snapshot.jpg
-http://DEVICE_IP:8080/flash/on
-http://DEVICE_IP:8080/flash/off
+```text
+dist/
+  legacycam-card.js
+  legacycam-card.css
+hacs.json
+README.md
 ```
 
----
-
-## ⚙️ Installation (HACS)
-
-### 1. Add custom repository
-- Go to HACS → Integrations
-- Add custom repository
-- URL: your GitHub repo
-- Category: Integration
-
-### 2. Install LegacyCam
-- Search "LegacyCam"
-- Install
-- Restart Home Assistant
-
----
-
-## 🧩 Configuration
-
-When adding the integration, you must provide:
-
-### Required
-- **IP Address** of the camera
-
-### Advanced options
-- Clip duration (seconds): `5 - 300`
-- Retention time (hours): `1 - 168`
-
----
-
-## 🧠 Retention Logic
-
-LegacyCam automatically calculates how many video snippets to keep:
-
-```
-snippets = ceil(retention_seconds / clip_seconds)
-```
-
-Example:
-- Clip duration: 190 seconds
-- Retention: 1 hour (3600 seconds)
-
-```
-3600 / 190 = 18.94 → 19 clips retained
-```
-
-Older clips are automatically deleted.
-
----
-
-## 📁 Storage
-
-All recordings are stored in:
-
-```
-/config/www/legacycam/
-```
-
----
-
-## 🎥 Recording
-
-You can trigger clip recording via service:
+## Card Configuration
 
 ```yaml
-service: legacycam.record_clip
-data:
-  duration: 10
+type: custom:legacycam-card
+camera_entity: camera.legacycam
+flash_entity: switch.legacycam_flash
+rotation: 0
 ```
 
----
+Allowed rotation values are `0`, `90`, `180`, and `270`.
 
-## 💡 Flash Control
+## Refactor Plan
 
-A switch is created:
+1. Keep dashboard mode simple: preview plus flash button.
+2. Open fullscreen on preview click.
+3. Use Home Assistant camera proxy paths instead of raw backend stream or snapshot URLs.
+4. Use selectors in the editor instead of manual forms.
+5. Avoid repeated event registration and unnecessary image reloads.
 
-- `switch.legacycam_flash`
+## Breaking Changes
 
-It calls:
-- ON → `/flash/on`
-- OFF → `/flash/off`
+- `stream` and `snapshot` card config fields were removed.
+- `camera_entity` is now required.
+- Rotation remains presentation-only and lives only in the card config.
 
----
+## Migration Steps
 
-## 📸 Snapshot
+Replace old URL-based config:
 
-Snapshot is available via camera entity or service:
-
-```
-legacycam.snapshot
-```
-
----
-
-## 📹 Camera Entity
-
-```
-camera.legacycam
+```yaml
+type: custom:legacycam-card
+stream: http://DEVICE_IP:8080/stream
+snapshot: http://DEVICE_IP:8080/snapshot.jpg
 ```
 
-Supports MJPEG streaming.
+with entity-based config:
 
----
-
-## ⚠️ Requirements
-
-- Home Assistant 2024+
-- FFmpeg installed in HA
-- Device reachable via HTTP
-
----
-
-## 🚀 Roadmap
-
-- Stream proxy optimization
-- Rotation filter support (90/180/270)
-- Motion detection events
-- Continuous recording mode (NVR-like)
-- Lovelace custom card
-
----
-
-## ❤️ Notes
-
-This integration is designed for lightweight IP cameras exposing simple HTTP endpoints.
+```yaml
+type: custom:legacycam-card
+camera_entity: camera.legacycam
+flash_entity: switch.legacycam_flash
+rotation: 0
+```
