@@ -4,7 +4,7 @@ LegacyCam Card is a HACS frontend card for the LegacyCam Home Assistant integrat
 
 ## Architecture Proposal
 
-- `legacycam-card`: renders the camera preview, fullscreen stream, rotation transform, and flash button.
+- `legacycam-card`: renders the live camera stream, fullscreen stream, rotation transform, and flash button.
 - `legacycam-card-editor`: uses Home Assistant selectors for camera, switch, and rotation fields.
 - Home Assistant camera proxy endpoints are used for preview and fullscreen stream.
 - Flash control goes through the configured switch entity.
@@ -32,9 +32,9 @@ Allowed rotation values are `0`, `90`, `180`, and `270`.
 
 ## Refactor Plan
 
-1. Keep dashboard mode simple: preview plus flash button.
+1. Keep dashboard mode simple: live stream plus flash button.
 2. Open fullscreen on preview click.
-3. Use Home Assistant camera proxy paths instead of raw backend stream or snapshot URLs.
+3. Use Home Assistant camera stream proxy paths instead of raw backend URLs.
 4. Use selectors in the editor instead of manual forms.
 5. Avoid repeated event registration and unnecessary image reloads.
 
@@ -51,7 +51,6 @@ Replace old URL-based config:
 ```yaml
 type: custom:legacycam-card
 stream: http://DEVICE_IP:8080/stream
-snapshot: http://DEVICE_IP:8080/snapshot.jpg
 ```
 
 with entity-based config:

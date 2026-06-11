@@ -165,7 +165,7 @@ class LegacyCamCard extends HTMLElement {
     const rotation = this._rotation();
 
     if (preview && camera) {
-      const source = camera.attributes.entity_picture || this._cameraProxyUrl(false);
+      const source = this._cameraProxyUrl(true);
       if (preview.dataset.source !== source) {
         preview.src = source;
         preview.dataset.source = source;
@@ -207,7 +207,10 @@ class LegacyCamCard extends HTMLElement {
   _openViewer() {
     const viewer = this.shadowRoot.getElementById("viewer");
     const stream = this.shadowRoot.getElementById("stream");
+    const preview = this.shadowRoot.getElementById("preview");
 
+    preview.removeAttribute("src");
+    preview.dataset.source = "";
     stream.src = this._cameraProxyUrl(true);
     viewer.classList.add("open");
     this._viewerOpen = true;
@@ -220,6 +223,7 @@ class LegacyCamCard extends HTMLElement {
     viewer.classList.remove("open");
     stream.removeAttribute("src");
     this._viewerOpen = false;
+    this._update();
   }
 
   _updateFlashButton(button) {
