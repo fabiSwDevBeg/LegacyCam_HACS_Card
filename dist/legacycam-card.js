@@ -14,6 +14,8 @@ class LegacyCamCard extends HTMLElement {
 
     this.config = {
       flash_entity: "",
+      motion_entity: "",
+      recording_entity: "",
       rotation: 0,
       ...config
     };
@@ -91,6 +93,45 @@ class LegacyCamCard extends HTMLElement {
           color: var(--warning-color, #f9c74f);
         }
 
+        .tools {
+          position: absolute;
+          right: 12px;
+          bottom: 12px;
+          display: flex;
+          gap: 8px;
+        }
+
+        .tool {
+          width: 44px;
+          height: 44px;
+          border: 0;
+          border-radius: 50%;
+          display: none;
+          place-items: center;
+          color: var(--primary-text-color);
+          background: var(--ha-card-background, var(--card-background-color));
+          box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.28));
+          cursor: pointer;
+          opacity: 0.92;
+        }
+
+        .tool.visible {
+          display: grid;
+        }
+
+        .tool[disabled] {
+          opacity: 0.45;
+          cursor: default;
+        }
+
+        .tool.on {
+          color: var(--accent-color, #03a9f4);
+        }
+
+        .tool.recording.on {
+          color: var(--error-color, #db4437);
+        }
+
         .viewer {
           position: fixed;
           inset: 0;
@@ -133,6 +174,14 @@ class LegacyCamCard extends HTMLElement {
           <button class="flash" id="flash" type="button">
             <ha-icon icon="mdi:flash"></ha-icon>
           </button>
+          <div class="tools">
+            <button class="tool motion" id="motion" type="button" title="Motion detection">
+              <ha-icon icon="mdi:motion-sensor"></ha-icon>
+            </button>
+            <button class="tool recording" id="recording" type="button" title="Recording">
+              <ha-icon icon="mdi:record-rec"></ha-icon>
+            </button>
+          </div>
         </div>
       </ha-card>
 
@@ -153,6 +202,8 @@ class LegacyCamCard extends HTMLElement {
     this.shadowRoot.getElementById("close").addEventListener("click", () => this._closeViewer());
     this.shadowRoot.getElementById("flash").addEventListener("click", (event) => this._toggleFlash(event));
     this.shadowRoot.getElementById("viewerFlash").addEventListener("click", (event) => this._toggleFlash(event));
+    this.shadowRoot.getElementById("motion").addEventListener("click", (event) => this._toggleConfiguredSwitch(event, "motion_entity"));
+    this.shadowRoot.getElementById("recording").addEventListener("click", (event) => this._toggleConfiguredSwitch(event, "recording_entity"));
 
     this._rendered = true;
   }
@@ -180,6 +231,8 @@ class LegacyCamCard extends HTMLElement {
 
     this._updateFlashButton(this.shadowRoot.getElementById("flash"));
     this._updateFlashButton(this.shadowRoot.getElementById("viewerFlash"));
+    this._updateConfiguredSwitchButton(this.shadowRoot.getElementById("motion"), "motion_entity");
+    this._updateConfiguredSwitchButton(this.shadowRoot.getElementById("recording"), "recording_entity");
   }
 
   _cameraState() {
@@ -188,6 +241,11 @@ class LegacyCamCard extends HTMLElement {
 
   _flashState() {
     return this.config.flash_entity ? this._hass?.states?.[this.config.flash_entity] : null;
+  }
+
+  _configuredSwitchState(key) {
+    const entity = this.config[key];
+    return entity ? this._hass?.states?.[entity] : null;
   }
 
   _rotation() {
@@ -237,11 +295,38 @@ class LegacyCamCard extends HTMLElement {
     button.classList.toggle("on", on);
   }
 
+  _updateConfiguredSwitchButton(button, key) {
+    if (!button) return;
+
+    const entity = this.config[key];
+    const state = this._configuredSwitchState(key);
+    const enabled = Boolean(entity && state);
+
+    button.classList.toggle("visible", Boolean(entity));
+    button.disabled = !enabled;
+    button.classList.toggle("on", state?.state === "on");
+  }
+
   _toggleFlash(event) {
     event.stopPropagation();
 
     const entity = this.config.flash_entity;
     const state = this._flashState()?.state;
+
+    if (!entity || !state) return;
+
+    this._hass.callService(
+      "switch",
+      state === "on" ? "turn_off" : "turn_on",
+      { entity_id: entity }
+    );
+  }
+
+  _toggleConfiguredSwitch(event, key) {
+    event.stopPropagation();
+
+    const entity = this.config[key];
+    const state = this._configuredSwitchState(key)?.state;
 
     if (!entity || !state) return;
 
@@ -263,11 +348,15 @@ class LegacyCamCard extends HTMLElement {
   static getStubConfig(hass) {
     const camera = Object.keys(hass?.states || {}).find((entityId) => entityId.startsWith("camera."));
     const flash = Object.keys(hass?.states || {}).find((entityId) => entityId.startsWith("switch."));
+    const motion = Object.keys(hass?.states || {}).find((entityId) => entityId.includes("motion_detection"));
+    const recording = Object.keys(hass?.states || {}).find((entityId) => entityId.includes("recording"));
 
     return {
       type: "custom:legacycam-card",
       camera_entity: camera || "",
       flash_entity: flash || "",
+      motion_entity: motion || "",
+      recording_entity: recording || "",
       rotation: 0
     };
   }
@@ -287,6 +376,8 @@ class LegacyCamCardEditor extends HTMLElement {
     this.config = {
       camera_entity: "",
       flash_entity: "",
+      motion_entity: "",
+      recording_entity: "",
       rotation: 0,
       ...config
     };
@@ -312,12 +403,16 @@ class LegacyCamCardEditor extends HTMLElement {
       <div class="editor">
         <ha-selector id="camera"></ha-selector>
         <ha-selector id="flash"></ha-selector>
+        <ha-selector id="motion"></ha-selector>
+        <ha-selector id="recording"></ha-selector>
         <ha-selector id="rotation"></ha-selector>
       </div>
     `;
 
     this._setupSelector("camera", "Camera entity", { entity: { domain: "camera" } }, this.config.camera_entity);
     this._setupSelector("flash", "Flash entity", { entity: { domain: "switch" } }, this.config.flash_entity);
+    this._setupSelector("motion", "Motion entity", { entity: { domain: "switch" } }, this.config.motion_entity);
+    this._setupSelector("recording", "Recording entity", { entity: { domain: "switch" } }, this.config.recording_entity);
     this._setupSelector("rotation", "Rotation", {
       select: {
         options: [
@@ -342,9 +437,16 @@ class LegacyCamCardEditor extends HTMLElement {
   }
 
   _valueChanged(id, value) {
+    const keyMap = {
+      camera: "camera_entity",
+      flash: "flash_entity",
+      motion: "motion_entity",
+      recording: "recording_entity",
+      rotation: "rotation"
+    };
     const config = {
       ...this.config,
-      [id === "camera" ? "camera_entity" : id === "flash" ? "flash_entity" : "rotation"]:
+      [keyMap[id]]:
         id === "rotation" ? Number(value) : value
     };
 
