@@ -6,7 +6,8 @@ LegacyCam Card is a HACS frontend card for the LegacyCam Home Assistant integrat
 
 - `legacycam-card`: renders the live camera stream, fullscreen stream, rotation transform, flash button, and optional motion/recording buttons.
 - `legacycam-card-editor`: uses Home Assistant selectors for camera, switch, motion, recording, and rotation fields.
-- Home Assistant camera proxy endpoints are used for preview and fullscreen stream.
+- Home Assistant camera proxy endpoints are used for preview and fullscreen stream; the integration fans out both from one shared iPhone connection.
+- The preview stays live, reconnects after an error, and releases its browser connection when the card is removed.
 - Flash control goes through the configured switch entity.
 
 ## Folder Structure Proposal

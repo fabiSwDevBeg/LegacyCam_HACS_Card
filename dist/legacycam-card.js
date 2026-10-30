@@ -5,6 +5,7 @@ class LegacyCamCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._rendered = false;
     this._viewerOpen = false;
+    this._streamRetryTimer = null;
   }
 
   setConfig(config) {
@@ -33,6 +34,19 @@ class LegacyCamCard extends HTMLElement {
     }
 
     this._update();
+  }
+
+  disconnectedCallback() {
+    if (this._streamRetryTimer) {
+      clearTimeout(this._streamRetryTimer);
+      this._streamRetryTimer = null;
+    }
+
+    for (const id of ["preview", "stream"]) {
+      const image = this.shadowRoot.getElementById(id);
+      image?.removeAttribute("src");
+      if (image) image.dataset.source = "";
+    }
   }
 
   _render() {
@@ -204,6 +218,8 @@ class LegacyCamCard extends HTMLElement {
     this.shadowRoot.getElementById("viewerFlash").addEventListener("click", (event) => this._toggleFlash(event));
     this.shadowRoot.getElementById("motion").addEventListener("click", (event) => this._toggleConfiguredSwitch(event, "motion_entity"));
     this.shadowRoot.getElementById("recording").addEventListener("click", (event) => this._toggleConfiguredSwitch(event, "recording_entity"));
+    this.shadowRoot.getElementById("preview").addEventListener("error", (event) => this._scheduleStreamRetry(event.currentTarget));
+    this.shadowRoot.getElementById("stream").addEventListener("error", (event) => this._scheduleStreamRetry(event.currentTarget));
 
     this._rendered = true;
   }
@@ -215,13 +231,16 @@ class LegacyCamCard extends HTMLElement {
     const preview = this.shadowRoot.getElementById("preview");
     const rotation = this._rotation();
 
-    if (preview && camera) {
+    if (preview && this._cameraReady(camera) && !this._viewerOpen) {
       const source = this._cameraProxyUrl(true);
       if (preview.dataset.source !== source) {
         preview.src = source;
         preview.dataset.source = source;
       }
       preview.style.transform = `rotate(${rotation}deg)`;
+    } else if (preview) {
+      preview.removeAttribute("src");
+      preview.dataset.source = "";
     }
 
     const stream = this.shadowRoot.getElementById("stream");
@@ -237,6 +256,10 @@ class LegacyCamCard extends HTMLElement {
 
   _cameraState() {
     return this._hass?.states?.[this.config.camera_entity];
+  }
+
+  _cameraReady(camera = this._cameraState()) {
+    return Boolean(camera && camera.state !== "unavailable" && camera.state !== "unknown");
   }
 
   _flashState() {
@@ -359,6 +382,24 @@ class LegacyCamCard extends HTMLElement {
       recording_entity: recording || "",
       rotation: 0
     };
+  }
+
+  _scheduleStreamRetry(image) {
+    if (!this.isConnected || !this._cameraReady()) return;
+    if (image.id === "stream" && !this._viewerOpen) return;
+    if (image.id === "preview" && this._viewerOpen) return;
+    if (this._streamRetryTimer) return;
+
+    this._streamRetryTimer = setTimeout(() => {
+      this._streamRetryTimer = null;
+      if (!this.isConnected || !this._cameraReady()) return;
+      if (image.id === "stream" && !this._viewerOpen) return;
+      if (image.id === "preview" && this._viewerOpen) return;
+      image.removeAttribute("src");
+      const source = this._cameraProxyUrl(true);
+      image.src = source;
+      image.dataset.source = source;
+    }, 1000);
   }
 }
 
